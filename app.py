@@ -21,7 +21,7 @@ REPLACEMENT_MAP = {
     13: 0.5, 14: 0.5, 15: 0.5, 16: 0.5, 17: 0.5, 18: 0.5, 19: 0.5, 20: 0.5 
 }
 
-# Parsed from June 2026 schedule
+# June 2026 Schedule
 STAGE_DATES = {
     1: '2026-06-07',
     2: '2026-06-08',
@@ -53,6 +53,11 @@ def format_name(name, drop_date):
 
 @st.cache_data(ttl=300)
 def load_data():
+    # Explicitly define columns on fallbacks to completely eliminate UI KeyErrors if a load fails
+    empty_riders = pd.DataFrame(columns=['rider_name', 'match_name', 'owner', 'team_pick', 'is_replacement', 'add_date', 'drop_date', 'replaces_rider', 'rider_role'])
+    empty_proc = pd.DataFrame(columns=['Stage', 'Category', 'rank', 'res_rider', 'match_name', 'owner', 'rider_name', 'team_pick', 'is_replacement', 'rider_role', 'add_date', 'drop_date', 'replaces_rider', 'pts', 'Display Category'])
+    empty_fa = pd.DataFrame(columns=['res_rider', 'pts'])
+    
     try:
         r_df = pd.read_csv('riders.csv')
         r_df['match_name'] = r_df['rider_name'].apply(normalize_name)
@@ -95,7 +100,8 @@ def load_data():
                 
         r_df['team_pick'] = team_picks
 
-        res = pd.read_excel('results.xlsx', engine='openpyxl')
+        # Switch to CSV parsing to eliminate openpyxl completely
+        res = pd.read_csv('results.csv')
         
         has_data = res.copy()
         if '1st' in has_data.columns:
@@ -125,7 +131,7 @@ def load_data():
                         raw_results_list.append({'Stage': s, 'res_rider': stage_data[col].iloc[0], 'rank': i, 'Category': cat_name})
 
         df_all_raw = pd.DataFrame(raw_results_list)
-        if df_all_raw.empty: return pd.DataFrame(), r_df, latest_stage, pd.DataFrame()
+        if df_all_raw.empty: return empty_proc, r_df, latest_stage, empty_fa
 
         df_all_raw['match_name'] = df_all_raw['res_rider'].apply(normalize_name)
         proc = df_all_raw.merge(r_df[['match_name', 'owner', 'rider_name', 'team_pick', 'is_replacement', 'rider_role', 'add_date', 'drop_date', 'replaces_rider']], on='match_name', how='inner')
@@ -170,8 +176,8 @@ def load_data():
         return proc, r_df, latest_stage, best_unpicked
 
     except Exception as e:
-        st.error(f"Data Error: {e}")
-        return pd.DataFrame(), pd.DataFrame(), 0, pd.DataFrame()
+        st.error(f"⚠️ App Data Processing Error: {e}")
+        return empty_proc, empty_riders, 0, empty_fa
 
 proc_data, riders, current_stage, best_unpicked = load_data()
 
@@ -179,14 +185,18 @@ proc_data, riders, current_stage, best_unpicked = load_data()
 def show_dashboard():
     st.title("🏆 Tour Auvergne - Rhône-Alpes Fantasy")
     
+    if riders.empty:
+        st.warning("Roster dataset is completely empty or missing. Please ensure your `riders.csv` file is pushed to GitHub.")
+        return
+
     owners = sorted(riders['owner'].unique())
-    m_cols = st.columns(len(owners))
+    m_cols = st.columns(max(len(owners), 1))
     for idx, owner in enumerate(owners):
-        if not proc_data.empty:
+        if not proc_data.empty and 'owner' in proc_data.columns:
             owner_pts = proc_data[proc_data['owner'] == owner]['pts'].sum()
         else:
             owner_pts = 0.0
-        m_cols[idx].metric(owner, f"{owner_pts:,.1f}")
+        m_cols[idx].metric(str(owner), f"{owner_pts:,.1f}")
 
     st.divider()
 
@@ -195,7 +205,7 @@ def show_dashboard():
         stage_res_data = proc_data[proc_data['Category'] == 'Stage Result']
         
         try:
-            res = pd.read_excel('results.xlsx', engine='openpyxl')
+            res = pd.read_csv('results.csv')
             raw_list = []
             for s in all_stages:
                 stage_data = res[res['Stage'] == s]
@@ -290,16 +300,16 @@ def show_dashboard():
                 height=350
             )
     else:
-        st.info("No stage history available to compile progression metrics yet.")
+        st.info("No compiled race data found inside `results.csv` yet. Feed rows into your results file to unlock analytics timeline updates.")
 
     st.divider()
     
     st.subheader("🔥 Top 10 Performers per Team")
-    t_cols = st.columns(len(owners))
+    t_cols = st.columns(max(len(owners), 1))
     for idx, owner in enumerate(owners):
         with t_cols[idx]:
             st.markdown(f"#### {owner}")
-            if not proc_data.empty:
+            if not proc_data.empty and 'owner' in proc_data.columns:
                 owner_df = proc_data[proc_data['owner'] == owner]
                 
                 team_points = owner_df.groupby('rider_name')['pts'].sum().reset_index()
@@ -318,12 +328,12 @@ def show_dashboard():
                         
                     st.markdown(f"**{r['pts']:.1f}** — {format_name(r_name, display_drop_date)}")
             else: 
-                st.caption("No points yet.")
+                st.caption("No points tracked yet.")
 
     st.divider()
     
     st.subheader("⏱️ Latest Results (Last 2 Stages)")
-    if not proc_data.empty:
+    if not proc_data.empty and 'Stage' in proc_data.columns:
         all_stages_recorded = sorted(proc_data['Stage'].unique(), reverse=True)
         latest_two = all_stages_recorded[:2]
         
@@ -342,12 +352,16 @@ def show_dashboard():
             )
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
-            st.info("No stage results recorded for the recent stages.")
+            st.info("No specific Stage Result category rows matching recent stage numbers.")
     else:
-        st.info("No data available.")
+        st.info("No point details available.")
 
 def show_leaderboard():
     st.title("🏆 Full Rider Leaderboard")
+    if riders.empty:
+        st.warning("Roster metrics are empty.")
+        return
+        
     if not proc_data.empty:
         df = proc_data.groupby(['rider_name', 'owner', 'rider_role', 'drop_date', 'Display Category'], dropna=False)['pts'].sum().unstack(fill_value=0.0).reset_index()
         for col in ['Stage Result', 'GC Standing', 'Jerseys']:
@@ -372,15 +386,24 @@ def show_leaderboard():
             }
         )
     else:
-        st.info("No points data to display.")
+        st.info("No active riders have points recorded.")
 
 def show_team_rosters():
     st.title("👥 Team Rosters")
     st.markdown("Current active lineups and live scoring potential.")
     
+    if riders.empty:
+        st.warning("No roster tracking metadata accessible.")
+        return
+
     owners = sorted(riders['owner'].unique())
-    r_pts = proc_data.groupby(['match_name', 'owner', 'team_pick'])['pts'].sum().reset_index()
-    cols = st.columns(len(owners))
+    
+    if not proc_data.empty:
+        r_pts = proc_data.groupby(['match_name', 'owner', 'team_pick'])['pts'].sum().reset_index()
+    else:
+        r_pts = pd.DataFrame(columns=['match_name', 'owner', 'team_pick', 'pts'])
+        
+    cols = st.columns(max(len(owners), 1))
     
     for idx, owner in enumerate(owners):
         with cols[idx]:
@@ -418,21 +441,29 @@ def show_team_rosters():
                     }
                 )
             else:
-                st.caption("No active riders found.")
+                st.caption("No riders identified in this segment.")
 
 def show_analytics():
     st.title("📈 Draft Pick Efficiency")
+    if riders.empty:
+        st.warning("Data arrays unavailable.")
+        return
+
     owners = sorted(riders['owner'].unique())
-    cols = st.columns(len(owners))
+    cols = st.columns(max(len(owners), 1))
     
     for idx, owner in enumerate(owners):
         with cols[idx]:
             st.subheader(f"Team {owner}")
             team_riders = riders[riders['owner'] == owner].copy()
-            r_pts = proc_data[proc_data['owner'] == owner].groupby(['match_name', 'team_pick'])['pts'].sum().reset_index()
             
+            if not proc_data.empty:
+                r_pts = proc_data[proc_data['owner'] == owner].groupby(['match_name', 'team_pick'])['pts'].sum().reset_index()
+            else:
+                r_pts = pd.DataFrame(columns=['match_name', 'team_pick', 'pts'])
+                
             df = team_riders.merge(r_pts, on=['match_name', 'team_pick'], how='left').fillna(0)
-            unique_picks = sorted(df['team_pick'].unique())
+            unique_picks = sorted(df['team_pick'].unique()) if not df.empty else []
             
             for pick in unique_picks:
                 pick_df = df[df['team_pick'] == pick].copy()
@@ -456,17 +487,28 @@ def show_analytics():
                                              
     st.divider()
     st.subheader("Free Agents")
-    st.dataframe(best_unpicked[best_unpicked['pts'] > 0].head(25), use_container_width=True, hide_index=True)
+    if not best_unpicked.empty:
+        st.dataframe(best_unpicked[best_unpicked['pts'] > 0].head(25), use_container_width=True, hide_index=True)
+    else:
+        st.info("No unpicked alternative riders have accrued points yet.")
 
 def show_rider_breakdowns():
     st.title("🔍 Detailed Rider Breakdowns")
+    if riders.empty:
+        st.warning("Roster metrics missing.")
+        return
+
     owners = sorted(riders['owner'].unique())
-    owner_cols = st.columns(len(owners))
+    owner_cols = st.columns(max(len(owners), 1))
     
     for idx, owner in enumerate(owners):
         with owner_cols[idx]:
             st.header(f"Team {owner}")
-            r_totals = proc_data[proc_data['owner'] == owner].groupby(['match_name', 'team_pick'])['pts'].sum().reset_index()
+            if not proc_data.empty:
+                r_totals = proc_data[proc_data['owner'] == owner].groupby(['match_name', 'team_pick'])['pts'].sum().reset_index()
+            else:
+                r_totals = pd.DataFrame(columns=['match_name', 'team_pick', 'pts'])
+                
             team_riders = riders[riders['owner'] == owner].merge(r_totals, on=['match_name', 'team_pick'], how='left').fillna(0)
             team_riders = team_riders.sort_values('pts', ascending=False)
             
@@ -477,7 +519,7 @@ def show_rider_breakdowns():
                     display = format_name(raw_sub_label, r['drop_date'])
                 
                 with st.expander(f"Pick {r['team_pick']} | {display} — {r['pts']:.1f} pts"):
-                    if r['pts'] > 0:
+                    if r['pts'] > 0 and not proc_data.empty:
                         rider_details = proc_data[(proc_data['match_name'] == r['match_name']) & (proc_data['team_pick'] == r['team_pick'])][['Stage', 'Category', 'rank', 'pts']]
                         st.dataframe(rider_details, use_container_width=True, hide_index=True)
                     else: 
