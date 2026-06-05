@@ -59,11 +59,11 @@ def load_data():
     empty_fa = pd.DataFrame(columns=['res_rider', 'pts'])
     
     try:
-        # Try reading riders.csv with UTF-8 first, fallback to cp1252 if it hits accent characters
+        # Try reading riders.csv with UTF-8 first, fallback to cp1252 if it hits accent characters. Skip bad tokenization rows.
         try:
-            r_df = pd.read_csv('riders.csv', encoding='utf-8')
+            r_df = pd.read_csv('riders.csv', encoding='utf-8', on_bad_lines='skip')
         except UnicodeDecodeError:
-            r_df = pd.read_csv('riders.csv', encoding='cp1252')
+            r_df = pd.read_csv('riders.csv', encoding='cp1252', on_bad_lines='skip')
             
         r_df['match_name'] = r_df['rider_name'].apply(normalize_name)
         
@@ -107,11 +107,11 @@ def load_data():
                 
         r_df['team_pick'] = team_picks
 
-        # Try reading results.csv with UTF-8 first, fallback to cp1252 to handle Excel encoding formats
+        # Try reading results.csv with UTF-8 first, fallback to cp1252 to handle Excel encoding formats. Skip bad rows.
         try:
-            res = pd.read_csv('results.csv', encoding='utf-8')
+            res = pd.read_csv('results.csv', encoding='utf-8', on_bad_lines='skip')
         except UnicodeDecodeError:
-            res = pd.read_csv('results.csv', encoding='cp1252')
+            res = pd.read_csv('results.csv', encoding='cp1252', on_bad_lines='skip')
         
         has_data = res.copy()
         if '1st' in has_data.columns:
@@ -216,9 +216,9 @@ def show_dashboard():
         
         try:
             try:
-                res = pd.read_csv('results.csv', encoding='utf-8')
+                res = pd.read_csv('results.csv', encoding='utf-8', on_bad_lines='skip')
             except UnicodeDecodeError:
-                res = pd.read_csv('results.csv', encoding='cp1252')
+                res = pd.read_csv('results.csv', encoding='cp1252', on_bad_lines='skip')
                 
             raw_list = []
             for s in all_stages:
