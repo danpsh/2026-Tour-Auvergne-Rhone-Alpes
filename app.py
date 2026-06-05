@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import unicodedata
+import io
 
 # --- 1. SETTINGS & SCORING ---
 st.set_page_config(
@@ -53,17 +54,57 @@ def format_name(name, drop_date):
 
 @st.cache_data(ttl=300)
 def load_data():
-    # Explicitly define columns on fallbacks to completely eliminate UI KeyErrors if a load fails
+    # Explicitly define columns on fallbacks to eliminate UI KeyErrors if a load fails
     empty_riders = pd.DataFrame(columns=['rider_name', 'match_name', 'owner', 'team_pick', 'is_replacement', 'add_date', 'drop_date', 'replaces_rider', 'rider_role'])
     empty_proc = pd.DataFrame(columns=['Stage', 'Category', 'rank', 'res_rider', 'match_name', 'owner', 'rider_name', 'team_pick', 'is_replacement', 'rider_role', 'add_date', 'drop_date', 'replaces_rider', 'pts', 'Display Category'])
     empty_fa = pd.DataFrame(columns=['res_rider', 'pts'])
     
+    # Raw inline list
+    rider_csv_data = """rider_name,owner,add_date,drop_date,is_replacement,rider_role,replaces_rider
+Paul Seixas,Daniel,2026-06-05,,False,,
+Matteo Jorgenson,Daniel,2026-06-05,,False,,
+Oscar Onley,Daniel,2026-06-05,,False,,
+Kévin Vauquelin,Daniel,2026-06-05,,False,,
+Wout van Aert,Daniel,2026-06-05,,False,,
+Mattias Skjelmose,Daniel,2026-06-05,,False,,
+Ben Healy,Daniel,2026-06-05,,False,,
+Jørgen Nordhagen,Daniel,2026-06-05,,False,,
+Luke Plapp,Daniel,2026-06-05,,False,,
+Valentin Paret-Peintre,Daniel,2026-06-05,,False,,
+Benoît Cosnefroy,Daniel,2026-06-05,,False,,
+Lorenzo Fortunato,Daniel,2026-06-05,,False,,
+Harold Tejada,Daniel,2026-06-05,,False,,
+Luke Tuckwell,Daniel,2026-06-05,,False,,
+Léo Bisiaux,Daniel,2026-06-05,,False,,
+Jefferson Cepeda,Daniel,2026-06-05,,False,,
+Iván Romeo,Daniel,2026-06-05,,False,,
+Pablo Castrillo,Daniel,2026-06-05,,False,,
+Junior Lecerf,Daniel,2026-06-05,,False,,
+Julian Alaphilippe,Daniel,2026-06-05,,False,,
+Isaac del Toro,Tanner,2026-06-05,,False,,
+Juan Ayuso,Tanner,2026-06-05,,False,,
+Tobias Halland Johannessen,Tanner,2026-06-05,,False,,
+João Almeida,Tanner,2026-06-05,,False,,
+Dorian Godon,Tanner,2026-06-05,,False,,
+Cian Utejbrookes,Tanner,2026-06-05,,False,,
+Matthew Riccitello,Tanner,2026-06-05,,False,,
+Daniel Martínez,Tanner,2026-06-05,,False,,
+Carlos Rodríguez,Tanner,2026-06-05,,False,,
+Finn Fisher-Black,Tanner,2026-06-05,,False,,
+Phil Bauhaus,Tanner,2026-06-05,,False,,
+Bryan Coquard,Tanner,2026-06-05,,False,,
+Santiago Buitrago,Tanner,2026-06-05,,False,,
+Matteo Trentin,Tanner,2026-06-05,,False,,
+Georg Steinhauser,Tanner,2026-06-05,,False,,
+Michael Matthews,Tanner,2026-06-05,,False,,
+Per Strand Hagenes,Tanner,2026-06-05,,False,,
+Sam Watson,Tanner,2026-06-05,,False,,
+Jordan Jegat,Tanner,2026-06-05,,False,,
+Pello Bilbao,Tanner,2026-06-05,,False,,"""
+
     try:
-        # Try reading riders.csv with UTF-8 first, fallback to cp1252 if it hits accent characters. Skip bad tokenization rows.
-        try:
-            r_df = pd.read_csv('riders.csv', encoding='utf-8', on_bad_lines='skip')
-        except UnicodeDecodeError:
-            r_df = pd.read_csv('riders.csv', encoding='cp1252', on_bad_lines='skip')
+        # Stream into memory directly to prevent file tokenization exceptions
+        r_df = pd.read_csv(io.StringIO(rider_csv_data), on_bad_lines='skip')
             
         r_df['match_name'] = r_df['rider_name'].apply(normalize_name)
         
@@ -107,7 +148,7 @@ def load_data():
                 
         r_df['team_pick'] = team_picks
 
-        # Try reading results.csv with UTF-8 first, fallback to cp1252 to handle Excel encoding formats. Skip bad rows.
+        # Try reading results.csv with UTF-8 first, fallback to cp1252
         try:
             res = pd.read_csv('results.csv', encoding='utf-8', on_bad_lines='skip')
         except UnicodeDecodeError:
@@ -196,7 +237,7 @@ def show_dashboard():
     st.title("🏆 Tour Auvergne - Rhône-Alpes Fantasy")
     
     if riders.empty:
-        st.warning("Roster dataset is completely empty or missing. Please ensure your `riders.csv` file is pushed to GitHub.")
+        st.warning("Roster dataset is completely empty or missing. Please ensure your configuration file is pushed properly.")
         return
 
     owners = sorted(riders['owner'].unique())
@@ -346,7 +387,7 @@ def show_dashboard():
 
     st.divider()
     
-    st.subheader("⏱️ Latest Results (Last 2 Stages)")
+    st.subheader("🔥 Latest Results (Last 2 Stages)")
     if not proc_data.empty and 'Stage' in proc_data.columns:
         all_stages_recorded = sorted(proc_data['Stage'].unique(), reverse=True)
         latest_two = all_stages_recorded[:2]
@@ -388,7 +429,7 @@ def show_leaderboard():
         st.dataframe(
             df[['Rider', 'owner', 'rider_role', 'Stage Result', 'GC Standing', 'Jerseys', 'Total']], 
             use_container_width=True, 
-            hide_index=True, 
+            hide_index=True,  
             height=600,
             column_config={
                 "owner": st.column_config.TextColumn("Owner"),
@@ -458,7 +499,7 @@ def show_team_rosters():
                 st.caption("No riders identified in this segment.")
 
 def show_analytics():
-    st.title("📈 Draft Pick Efficiency")
+    st.title(" 🚀 Draft Pick Efficiency")
     if riders.empty:
         st.warning("Data arrays unavailable.")
         return
