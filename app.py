@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import unicodedata
-import io
 
 # --- 1. SETTINGS & SCORING ---
 st.set_page_config(
@@ -57,54 +56,17 @@ def load_data():
     empty_riders = pd.DataFrame(columns=['rider_name', 'match_name', 'owner', 'team_pick', 'is_replacement', 'add_date', 'drop_date', 'replaces_rider'])
     empty_proc = pd.DataFrame(columns=['Stage', 'Category', 'rank', 'res_rider', 'match_name', 'owner', 'rider_name', 'team_pick', 'is_replacement', 'add_date', 'drop_date', 'replaces_rider', 'pts', 'Display Category'])
     empty_fa = pd.DataFrame(columns=['res_rider', 'pts'])
-    
-    # Roster data (with rider_role cleared from headers and entries)
-    rider_csv_data = """rider_name,owner,add_date,drop_date,is_replacement,replaces_rider
-Paul Seixas,Daniel,2026-06-05,,False,
-Matteo Jorgenson,Daniel,2026-06-05,,False,
-Oscar Onley,Daniel,2026-06-05,,False,
-Kévin Vauquelin,Daniel,2026-06-05,,False,
-Wout van Aert,Daniel,2026-06-05,,False,
-Mattias Skjelmose,Daniel,2026-06-05,,False,
-Ben Healy,Daniel,2026-06-05,,False,
-Jørgen Nordhagen,Daniel,2026-06-05,,False,
-Luke Plapp,Daniel,2026-06-05,,False,
-Valentin Paret-Peintre,Daniel,2026-06-05,,False,
-Benoît Cosnefroy,Daniel,2026-06-05,,False,
-Lorenzo Fortunato,Daniel,2026-06-05,,False,
-Harold Tejada,Daniel,2026-06-05,,False,
-Luke Tuckwell,Daniel,2026-06-05,,False,
-Léo Bisiaux,Daniel,2026-06-05,,False,
-Jefferson Cepeda,Daniel,2026-06-05,,False,
-Iván Romeo,Daniel,2026-06-05,,False,
-Pablo Castrillo,Daniel,2026-06-05,,False,
-Junior Lecerf,Daniel,2026-06-05,,False,
-Julian Alaphilippe,Daniel,2026-06-05,,False,
-Isaac del Toro,Tanner,2026-06-05,,False,
-Juan Ayuso,Tanner,2026-06-05,,False,
-Tobias Halland Johannessen,Tanner,2026-06-05,,False,
-João Almeida,Tanner,2026-06-05,,False,
-Dorian Godon,Tanner,2026-06-05,,False,
-Cian Utejbrookes,Tanner,2026-06-05,,False,
-Matthew Riccitello,Tanner,2026-06-05,,False,
-Daniel Martínez,Tanner,2026-06-05,,False,
-Carlos Rodríguez,Tanner,2026-06-05,,False,
-Finn Fisher-Black,Tanner,2026-06-05,,False,
-Phil Bauhaus,Tanner,2026-06-05,,False,
-Bryan Coquard,Tanner,2026-06-05,,False,
-Santiago Buitrago,Tanner,2026-06-05,,False,
-Matteo Trentin,Tanner,2026-06-05,,False,
-Georg Steinhauser,Tanner,2026-06-05,,False,
-Michael Matthews,Tanner,2026-06-05,,False,
-Per Strand Hagenes,Tanner,2026-06-05,,False,
-Sam Watson,Tanner,2026-06-05,,False,
-Jordan Jegat,Tanner,2026-06-05,,False,
-Pello Bilbao,Tanner,2026-06-05,,False,"""
-
-    cleaned_rider_lines = "\n".join([line.strip() for line in rider_csv_data.strip().splitlines()])
 
     try:
-        r_df = pd.read_csv(io.StringIO(cleaned_rider_lines), engine='python', on_bad_lines='skip')
+        # Load local rosters file dynamically as seen in image_8928c9.png
+        try:
+            r_df = pd.read_csv('riders.csv', encoding='utf-8', engine='python', on_bad_lines='skip')
+        except (UnicodeDecodeError, FileNotFoundError):
+            try:
+                r_df = pd.read_csv('riders.csv', encoding='cp1252', engine='python', on_bad_lines='skip')
+            except:
+                return empty_proc, empty_riders, 0, empty_fa
+
         r_df['match_name'] = r_df['rider_name'].apply(normalize_name)
         
         if 'drop_date' in r_df.columns:
@@ -141,6 +103,7 @@ Pello Bilbao,Tanner,2026-06-05,,False,"""
                 team_picks.append(p_num)
         r_df['team_pick'] = team_picks
 
+        # Safely try opening results.csv
         try:
             res = pd.read_csv('results.csv', encoding='utf-8', engine='python', on_bad_lines='skip')
         except (UnicodeDecodeError, FileNotFoundError):
