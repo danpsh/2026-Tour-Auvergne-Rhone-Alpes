@@ -59,7 +59,12 @@ def load_data():
     empty_fa = pd.DataFrame(columns=['res_rider', 'pts'])
     
     try:
-        r_df = pd.read_csv('riders.csv')
+        # Try reading riders.csv with UTF-8 first, fallback to cp1252 if it hits accent characters
+        try:
+            r_df = pd.read_csv('riders.csv', encoding='utf-8')
+        except UnicodeDecodeError:
+            r_df = pd.read_csv('riders.csv', encoding='cp1252')
+            
         r_df['match_name'] = r_df['rider_name'].apply(normalize_name)
         
         if 'drop_date' in r_df.columns:
@@ -79,11 +84,14 @@ def load_data():
 
         r_df = r_df.sort_values('add_date', ascending=True).reset_index(drop=True)
 
+        # 1. Cleanly assign sequential draft slots (1-20) per owner for base picks
         base_mask = r_df['is_replacement'] != True
         r_df.loc[base_mask, 'team_pick'] = r_df[base_mask].groupby('owner').cumcount() + 1
         
+        # 2. Map replacement riders to the exact slot of the rider they replaced
         pick_map = {}
         team_picks = []
+        
         for idx, row in r_df.iterrows():
             owner = str(row['owner']).lower().strip()
             rider = str(row['rider_name']).lower().strip()
@@ -95,13 +103,15 @@ def load_data():
             else:
                 replaced = str(row['replaces_rider']).lower().strip() if pd.notna(row['replaces_rider']) else ""
                 p_num = pick_map.get((owner, replaced), 99)
-                pick_map[(owner, rider)] = p_num
                 team_picks.append(p_num)
                 
         r_df['team_pick'] = team_picks
 
-        # Switch to CSV parsing to eliminate openpyxl completely
-        res = pd.read_csv('results.csv')
+        # Try reading results.csv with UTF-8 first, fallback to cp1252 to handle Excel encoding formats
+        try:
+            res = pd.read_csv('results.csv', encoding='utf-8')
+        except UnicodeDecodeError:
+            res = pd.read_csv('results.csv', encoding='cp1252')
         
         has_data = res.copy()
         if '1st' in has_data.columns:
@@ -205,7 +215,11 @@ def show_dashboard():
         stage_res_data = proc_data[proc_data['Category'] == 'Stage Result']
         
         try:
-            res = pd.read_csv('results.csv')
+            try:
+                res = pd.read_csv('results.csv', encoding='utf-8')
+            except UnicodeDecodeError:
+                res = pd.read_csv('results.csv', encoding='cp1252')
+                
             raw_list = []
             for s in all_stages:
                 stage_data = res[res['Stage'] == s]
