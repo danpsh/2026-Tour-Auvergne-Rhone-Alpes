@@ -58,7 +58,7 @@ def load_data():
     empty_fa = pd.DataFrame(columns=['res_rider', 'pts'])
 
     try:
-        # Load local rosters file dynamically as seen in image_8928c9.png
+        # Load local rosters file dynamically
         try:
             r_df = pd.read_csv('riders.csv', encoding='utf-8', engine='python', on_bad_lines='skip')
         except (UnicodeDecodeError, FileNotFoundError):
@@ -331,22 +331,39 @@ def show_team_rosters():
         return
 
     owners = sorted(riders['owner'].unique())
-    r_pts = proc_data.groupby(['match_name', 'owner', 'team_pick'])['pts'].sum().reset_index() if not proc_data.empty else pd.DataFrame(columns=['match_name', 'owner', 'team_pick', 'pts'])
+    
+    if not proc_data.empty:
+        r_pts = proc_data.groupby(['match_name', 'owner', 'team_pick'])['pts'].sum().reset_index()
+    else:
+        r_pts = pd.DataFrame(columns=['match_name', 'owner', 'team_pick', 'pts'])
         
     cols = st.columns(max(len(owners), 1))
     for idx, owner in enumerate(owners):
         with cols[idx]:
-            owner_df = riders[riders['owner'] == owner].merge(r_pts[['match_name', 'team_pick', 'pts']], on=['match_name', 'team_pick'], how='left').fillna(0)
-            owner_df['is_active'] = owner_df['drop_date'].apply(lambda d: pd.isna(d) or str(d).lower().strip() in ["", "nan", "none", "nat"])
             st.markdown(f"### Team {owner}")
             
+            owner_df = riders[riders['owner'] == owner].copy()
+            owner_df = owner_df.merge(r_pts[['match_name', 'team_pick', 'pts']], on=['match_name', 'team_pick'], how='left')
+            owner_df['pts'] = owner_df['pts'].fillna(0.0)
+            
+            owner_df['is_active'] = owner_df['drop_date'].apply(lambda d: pd.isna(d) or str(d).lower().strip() in ["", "nan", "none", "nat"])
             active_current = owner_df[owner_df['is_active'] == True].sort_values('team_pick', ascending=True)
+            
             if not active_current.empty:
                 st.dataframe(
-                    active_current[['team_pick', 'rider_name', 'pts', 'add_date']].rename(columns={'team_pick': 'Slot', 'rider_name': 'Rider', 'pts': 'Pts', 'add_date': 'Date Added'}),
-                    use_container_width=True, hide_index=True, height=735,
-                    column_config={"Slot": st.column_config.NumberColumn("Slot", format="%d"), "Pts": st.column_config.NumberColumn("Total Pts", format="%.1f")}
+                    active_current[['team_pick', 'rider_name', 'pts', 'add_date']].rename(
+                        columns={'team_pick': 'Slot', 'rider_name': 'Rider', 'pts': 'Pts', 'add_date': 'Date Added'}
+                    ),
+                    use_container_width=True, 
+                    hide_index=True, 
+                    height=735,
+                    column_config={
+                        "Slot": st.column_config.NumberColumn("Slot", format="%d"), 
+                        "Pts": st.column_config.NumberColumn("Total Pts", format="%.1f")
+                    }
                 )
+            else:
+                st.info("No active riders on this roster.")
 
 def show_analytics():
     st.title(" 🚀 Draft Pick Efficiency")
