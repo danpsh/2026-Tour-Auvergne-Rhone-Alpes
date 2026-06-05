@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import unicodedata
-import io
 
 # --- 1. SETTINGS & SCORING ---
 st.set_page_config(
@@ -22,7 +21,7 @@ REPLACEMENT_MAP = {
     13: 0.5, 14: 0.5, 15: 0.5, 16: 0.5, 17: 0.5, 18: 0.5, 19: 0.5, 20: 0.5 
 }
 
-# Parsed from image_8be37e.png (June 2026)
+# Parsed from June 2026 schedule
 STAGE_DATES = {
     1: '2026-06-07',
     2: '2026-06-08',
@@ -142,7 +141,6 @@ def load_data():
             base = SCORING.get(cat, SCORING.get("Jersey", {})).get(rank, 0)
             add_date = pd.to_datetime(row['add_date'])
             
-            # Sub logic adjustments for late switches
             if row.get('is_replacement', False) and add_date >= pd.Timestamp('2026-06-10'):
                 if cat == "Stage Result":
                     return base * 1.0  
@@ -177,62 +175,7 @@ def load_data():
 
 proc_data, riders, current_stage, best_unpicked = load_data()
 
-# --- 3. EXCEL MULTI-SHEET EXPORT GENERATOR ---
-def generate_excel_workbook():
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        
-        # Sheet 1: Leaderboard
-        if not proc_data.empty:
-            df_leaderboard = proc_data.groupby(['rider_name', 'owner', 'rider_role', 'drop_date', 'Display Category'], dropna=False)['pts'].sum().unstack(fill_value=0.0).reset_index()
-            for col in ['Stage Result', 'GC Standing', 'Jerseys']:
-                if col not in df_leaderboard.columns: df_leaderboard[col] = 0.0
-            df_leaderboard['Total'] = df_leaderboard[['Stage Result', 'GC Standing', 'Jerseys']].sum(axis=1)
-            df_leaderboard = df_leaderboard.sort_values('Total', ascending=False)
-            
-            export_lb = df_leaderboard[['rider_name', 'owner', 'rider_role', 'Stage Result', 'GC Standing', 'Jerseys', 'Total']].rename(
-                columns={'rider_name': 'Rider Name', 'owner': 'Owner', 'rider_role': 'Role', 'Stage Result': 'Stage Result Pts', 'GC Standing': 'GC Standing Pts', 'Jerseys': 'Jersey Pts', 'Total': 'Total Pts'}
-            )
-            export_lb.to_excel(writer, sheet_name='Leaderboard', index=False)
-        
-        # Sheet 2: Team Rosters (Active Roster Spots)
-        export_rosters_list = []
-        owners = sorted(riders['owner'].unique())
-        r_pts = proc_data.groupby(['match_name', 'owner', 'team_pick'])['pts'].sum().reset_index()
-        
-        for owner in owners:
-            owner_df = riders[riders['owner'] == owner].merge(r_pts[['match_name', 'team_pick', 'pts']], on=['match_name', 'team_pick'], how='left').fillna(0)
-            owner_df['is_active'] = owner_df['drop_date'].apply(lambda d: pd.isna(d) or str(d).lower().strip() in ["", "nan", "none", "nat", "0", "false"] or len(str(d).lower().strip()) < 7)
-            active_current = owner_df[owner_df['is_active'] == True].sort_values('team_pick', ascending=True)
-            for _, row in active_current.iterrows():
-                export_rosters_list.append({
-                    'Owner': row['owner'], 'Slot': row['team_pick'], 'Rider Name': row['rider_name'], 'Role': row['rider_role'], 'Total Pts Earned': row['pts'], 'Date Added': row['add_date']
-                })
-        if export_rosters_list:
-            pd.DataFrame(export_rosters_list).to_excel(writer, sheet_name='Active Rosters', index=False)
-
-        # Sheet 3: Draft Pick Efficiency Breakdown
-        export_analytics_list = []
-        for owner in owners:
-            team_riders = riders[riders['owner'] == owner].copy()
-            r_pts_owner = proc_data[proc_data['owner'] == owner].groupby(['match_name', 'team_pick'])['pts'].sum().reset_index()
-            df_an = team_riders.merge(r_pts_owner, on=['match_name', 'team_pick'], how='left').fillna(0).sort_values(['team_pick', 'is_replacement'])
-            for _, row in df_an.iterrows():
-                export_analytics_list.append({
-                    'Owner': row['owner'], 'Pick Slot': row['team_pick'], 'Rider Name': row['rider_name'], 'Is Replacement': row['is_replacement'], 'Replaces Rider': row['replaces_rider'] if pd.notna(row['replaces_rider']) else 'N/A', 'Pts Contributed': row['pts'], 'Status': 'Dropped' if pd.notna(row['drop_date']) and str(row['drop_date']).strip() != "" else 'Active'
-                })
-        if export_analytics_list:
-            pd.DataFrame(export_analytics_list).to_excel(writer, sheet_name='Draft Pick Analytics', index=False)
-
-        # Sheet 4: Free Agents
-        if not best_unpicked.empty:
-            export_fa = best_unpicked[best_unpicked['pts'] > 0].head(50).rename(columns={'res_rider': 'Rider Name', 'pts': 'Total Scoring Potential'})
-            export_fa.to_excel(writer, sheet_name='Free Agents', index=False)
-            
-    buffer.seek(0)
-    return buffer
-
-# --- 4. VIEWS ---
+# --- 3. VIEWS ---
 def show_dashboard():
     st.title("🏆 Tour Auvergne - Rhône-Alpes Fantasy")
     
@@ -500,8 +443,8 @@ def show_analytics():
                 with st.expander(expander_title):
                     def format_analytics_name(row):
                         if row['is_replacement']:
-                            raw_label = f"↳ Sub: {row['rider_name']}"
-                            return format_name(raw_label, row['drop_date'])
+                            raw_sub_label = f"↳ Sub: {row['rider_name']}"
+                            return format_name(raw_sub_label, row['drop_date'])
                         return format_name(row['rider_name'], row['drop_date'])
                         
                     pick_df['Rider'] = pick_df.apply(format_analytics_name, axis=1)
@@ -540,22 +483,7 @@ def show_rider_breakdowns():
                     else: 
                         st.write("No points scored.")
 
-# --- 5. NAVIGATION & SIDEBAR DOWNLOAD UTILITY ---
-with st.sidebar:
-    st.markdown("### 🛠️ Developer Tools")
-    st.markdown("Generate a complete spreadsheet containing all active data structures across app views.")
-    
-    excel_data = generate_excel_workbook()
-    
-    st.sidebar.download_button(
-        label="📥 Download App Data (Excel)",
-        data=excel_data,
-        file_name="2026_auvergne_fantasy_data.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
-    st.write("---")
-
+# --- 4. NAVIGATION ---
 pg = st.navigation([
     st.Page(show_dashboard, title="Home", icon="🏠"), 
     st.Page(show_leaderboard, title="Leaderboard", icon="🏆"), 
