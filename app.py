@@ -5,7 +5,7 @@ import io
 
 # --- 1. SETTINGS & SCORING ---
 st.set_page_config(
-    page_title="2026 Giro Fantasy", 
+    page_title="2026 Tour Auvergne - Rhône-Alpes Fantasy", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
@@ -22,13 +22,16 @@ REPLACEMENT_MAP = {
     13: 0.5, 14: 0.5, 15: 0.5, 16: 0.5, 17: 0.5, 18: 0.5, 19: 0.5, 20: 0.5 
 }
 
+# Parsed from image_8be37e.png (June 2026)
 STAGE_DATES = {
-    1: '2026-05-08', 2: '2026-05-09', 3: '2026-05-10', 4: '2026-05-12',
-    5: '2026-05-13', 6: '2026-05-14', 7: '2026-05-15', 8: '2026-05-15', # Adjust as needed
-    9: '2026-05-17', 10: '2026-05-19', 11: '2026-05-20', 12: '2026-05-21',
-    13: '2026-05-22', 14: '2026-05-23', 15: '2026-05-24', 16: '2026-05-26',
-    17: '2026-05-27', 18: '2026-05-28', 19: '2026-05-29', 20: '2026-05-30',
-    21: '2026-05-31'
+    1: '2026-06-07',
+    2: '2026-06-08',
+    3: '2026-06-09',
+    4: '2026-06-10',
+    5: '2026-06-11',
+    6: '2026-06-12',
+    7: '2026-06-13',
+    8: '2026-06-14'
 }
 
 # --- 2. HELPERS ---
@@ -66,7 +69,7 @@ def load_data():
         else:
             r_df['is_replacement'] = False
             
-        if 'add_date' not in r_df.columns: r_df['add_date'] = '2026-05-06'
+        if 'add_date' not in r_df.columns: r_df['add_date'] = '2026-06-05'
         if 'replaces_rider' not in r_df.columns: r_df['replaces_rider'] = pd.NA
         r_df['rider_role'] = r_df.get('rider_role', "N/A").fillna("N/A")
 
@@ -139,7 +142,8 @@ def load_data():
             base = SCORING.get(cat, SCORING.get("Jersey", {})).get(rank, 0)
             add_date = pd.to_datetime(row['add_date'])
             
-            if row.get('is_replacement', False) and add_date >= pd.Timestamp('2026-05-16'):
+            # Sub logic adjustments for late switches
+            if row.get('is_replacement', False) and add_date >= pd.Timestamp('2026-06-10'):
                 if cat == "Stage Result":
                     return base * 1.0  
                 elif "Jersey" in cat:
@@ -230,7 +234,7 @@ def generate_excel_workbook():
 
 # --- 4. VIEWS ---
 def show_dashboard():
-    st.title("🏆 2026 Giro d'Italia Fantasy")
+    st.title("🏆 Tour Auvergne - Rhône-Alpes Fantasy")
     
     owners = sorted(riders['owner'].unique())
     m_cols = st.columns(len(owners))
@@ -277,7 +281,7 @@ def show_dashboard():
                     cat, rank = row['Category'], row['rank']
                     base = SCORING.get(cat, SCORING.get("Jersey", {})).get(rank, 0)
                     add_date = pd.to_datetime(row['add_date'])
-                    if row.get('is_replacement', False) and add_date >= pd.Timestamp('2026-05-16'):
+                    if row.get('is_replacement', False) and add_date >= pd.Timestamp('2026-06-10'):
                         if cat == "Stage Result": return base * 1.0
                         elif "Jersey" in cat: return 0.0
                         elif "GC Standing" in cat: return base * REPLACEMENT_MAP.get(row['team_pick'], 0.5)
@@ -400,7 +404,7 @@ def show_dashboard():
         st.info("No data available.")
 
 def show_leaderboard():
-    st.title("📊 Full Rider Leaderboard")
+    st.title("🏆 Full Rider Leaderboard")
     if not proc_data.empty:
         df = proc_data.groupby(['rider_name', 'owner', 'rider_role', 'drop_date', 'Display Category'], dropna=False)['pts'].sum().unstack(fill_value=0.0).reset_index()
         for col in ['Stage Result', 'GC Standing', 'Jerseys']:
@@ -508,7 +512,7 @@ def show_analytics():
                     )
                                              
     st.divider()
-    st.subheader("Top Free Agents")
+    st.subheader("Free Agents")
     st.dataframe(best_unpicked[best_unpicked['pts'] > 0].head(25), use_container_width=True, hide_index=True)
 
 def show_rider_breakdowns():
@@ -541,13 +545,12 @@ with st.sidebar:
     st.markdown("### 🛠️ Developer Tools")
     st.markdown("Generate a complete spreadsheet containing all active data structures across app views.")
     
-    # Generate the multi-sheet file on click
     excel_data = generate_excel_workbook()
     
     st.sidebar.download_button(
         label="📥 Download App Data (Excel)",
         data=excel_data,
-        file_name="2026_giro_fantasy_data.xlsx",
+        file_name="2026_auvergne_fantasy_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
