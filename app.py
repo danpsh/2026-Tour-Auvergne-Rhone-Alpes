@@ -40,7 +40,7 @@ def normalize_name(name):
     return name.lower().replace('-', ' ').strip()
 
 def group_cat(cat):
-    if "Jersey" in cat: return "Jerseys"
+    if "Jersey" in cat: return "Jerkeys" if "Jerkeys" == "Jerseys" else "Jerseys"
     return cat
 
 def format_name(name, drop_date):
@@ -150,9 +150,11 @@ def load_data():
         df_all_raw['match_name'] = df_all_raw['res_rider'].apply(normalize_name)
         proc = df_all_raw.merge(r_df[['match_name', 'owner', 'rider_name', 'team_pick', 'is_replacement', 'add_date', 'drop_date', 'replaces_rider']], on='match_name', how='inner')
 
-        proc['stage_date'] = pd.to_datetime(proc['Stage'].map(STAGE_DATES))
-        proc['add_dt'] = pd.to_datetime(proc['add_date'])
-        proc['drop_dt'] = pd.to_datetime(proc['drop_date'])
+        # FIX: Explicitly convert to date objects to avoid hours/minutes mismatch parsing errors
+        proc['stage_date'] = pd.to_datetime(proc['Stage'].map(STAGE_DATES)).dt.date
+        proc['add_dt'] = pd.to_datetime(proc['add_date']).dt.date
+        proc['drop_dt'] = pd.to_datetime(proc['drop_date']).dt.date
+        
         valid_mask = (proc['stage_date'] >= proc['add_dt']) & (proc['drop_dt'].isna() | (proc['stage_date'] <= proc['drop_dt']))
         proc = proc[valid_mask].copy()
 
@@ -227,9 +229,12 @@ def show_dashboard():
             if not df_hist_snaps.empty:
                 df_hist_snaps['match_name'] = df_hist_snaps['res_rider'].apply(normalize_name)
                 df_hist_snaps = df_hist_snaps.merge(riders[['match_name', 'owner', 'add_date', 'drop_date', 'is_replacement', 'team_pick']], on='match_name', how='inner')
-                df_hist_snaps['stage_date'] = pd.to_datetime(df_hist_snaps['Stage'].map(STAGE_DATES))
-                df_hist_snaps['add_dt'] = pd.to_datetime(df_hist_snaps['add_date'])
-                df_hist_snaps['drop_dt'] = pd.to_datetime(df_hist_snaps['drop_date'])
+                
+                # FIX: Clean date conversions here too for identical chart timeline evaluation
+                df_hist_snaps['stage_date'] = pd.to_datetime(df_hist_snaps['Stage'].map(STAGE_DATES)).dt.date
+                df_hist_snaps['add_dt'] = pd.to_datetime(df_hist_snaps['add_date']).dt.date
+                df_hist_snaps['drop_dt'] = pd.to_datetime(df_hist_snaps['drop_date']).dt.date
+                
                 df_hist_snaps = df_hist_snaps[(df_hist_snaps['stage_date'] >= df_hist_snaps['add_dt']) & (df_hist_snaps['drop_dt'].isna() | (df_hist_snaps['stage_date'] <= df_hist_snaps['drop_dt']))]
                 
                 def calc_pts_hist(row):
