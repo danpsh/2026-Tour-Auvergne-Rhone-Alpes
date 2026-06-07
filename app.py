@@ -210,7 +210,7 @@ def show_dashboard():
     owners = sorted(riders['owner'].unique())
     m_cols = st.columns(max(len(owners), 1))
     for idx, owner in enumerate(owners):
-        if not proc_data.empty && 'owner' in proc_data.columns:
+        if not proc_data.empty and 'owner' in proc_data.columns:
             owner_pts = proc_data[proc_data['owner'] == owner]['pts'].sum()
         else:
             owner_pts = 0.0
