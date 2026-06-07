@@ -103,14 +103,11 @@ def load_data():
                 team_picks.append(p_num)
         r_df['team_pick'] = team_picks
 
-        # Safely try opening results.csv
+        # Target results.xlsx instead of a CSV
         try:
-            res = pd.read_csv('results.csv', encoding='utf-8', engine='python', on_bad_lines='skip')
-        except (UnicodeDecodeError, FileNotFoundError):
-            try:
-                res = pd.read_csv('results.csv', encoding='cp1252', engine='python', on_bad_lines='skip')
-            except:
-                res = pd.DataFrame()
+            res = pd.read_excel('results.xlsx', engine='openpyxl')
+        except Exception:
+            res = pd.DataFrame()
 
         if res.empty or 'Stage' not in res.columns:
             return empty_proc, r_df, 0, empty_fa
@@ -223,7 +220,7 @@ def show_dashboard():
         stage_res_data = proc_data[proc_data['Category'] == 'Stage Result']
         
         try:
-            res = pd.read_csv('results.csv', engine='python', on_bad_lines='skip')
+            res = pd.read_excel('results.xlsx', engine='openpyxl')
             raw_list = []
             for s in all_stages:
                 stage_data = res[res['Stage'] == s]
@@ -240,206 +237,4 @@ def show_dashboard():
             df_hist_snaps = pd.DataFrame(raw_list)
             if not df_hist_snaps.empty:
                 df_hist_snaps['match_name'] = df_hist_snaps['res_rider'].apply(normalize_name)
-                df_hist_snaps = df_hist_snaps.merge(riders[['match_name', 'owner', 'add_date', 'drop_date', 'is_replacement', 'team_pick']], on='match_name', how='inner')
-                
-                df_hist_snaps['stage_date'] = pd.to_datetime(df_hist_snaps['Stage'].map(STAGE_DATES))
-                df_hist_snaps['add_dt'] = pd.to_datetime(df_hist_snaps['add_date'])
-                
-                is_snap_dropped_null = df_hist_snaps['drop_date'].isnull() | df_hist_snaps['drop_date'].astype(str).str.strip().isin(["", "nan", "<NA>", "NaT", "None"])
-                df_hist_snaps['drop_dt'] = pd.to_datetime(df_hist_snaps['drop_date'], errors='coerce')
-                
-                df_hist_snaps = df_hist_snaps[(df_hist_snaps['stage_date'] >= df_hist_snaps['add_dt']) & (is_snap_dropped_null | (df_hist_snaps['stage_date'] <= df_hist_snaps['drop_dt']))]
-                
-                def calc_pts_hist(row):
-                    cat, rank = row['Category'], row['rank']
-                    base = SCORING.get(cat, SCORING.get("Jersey", {}).get(rank, 0))
-                    if isinstance(base, dict):
-                        base = base.get(rank, 0)
-                    if row.get('is_replacement', False) and pd.to_datetime(row['add_date']) >= pd.Timestamp('2026-06-10'):
-                        if cat == "Stage Result": return base * 1.0
-                        elif "Jersey" in cat: return 0.0
-                        elif "GC Standing" in cat: return base * REPLACEMENT_MAP.get(row['team_pick'], 0.5)
-                    return base
-                df_hist_snaps['pts'] = df_hist_snaps.apply(calc_pts_hist, axis=1)
-        except:
-            df_hist_snaps = pd.DataFrame()
-
-        df_stage_res = stage_res_data.groupby(['Stage', 'owner'])['pts'].sum().unstack(fill_value=0.0)
-        df_snapshots = df_hist_snaps.groupby(['Stage', 'owner'])['pts'].sum().unstack(fill_value=0.0) if not df_hist_snaps.empty else pd.DataFrame()
-        
-        for o_name in owners:
-            if o_name not in df_stage_res.columns: df_stage_res[o_name] = 0.0
-            if df_snapshots.empty or o_name not in df_snapshots.columns: df_snapshots[o_name] = 0.0
-            
-        chart_rows, matrix_rows = [], []
-        for s in all_stages: 
-            dan_accum = df_stage_res.loc[df_stage_res.index <= s, 'Daniel'].sum() if 'Daniel' in df_stage_res.columns else 0
-            tan_accum = df_stage_res.loc[df_stage_res.index <= s, 'Tanner'].sum() if 'Tanner' in df_stage_res.columns else 0
-            dan_snap = df_snapshots.loc[s, 'Daniel'] if ('Daniel' in df_snapshots.columns and s in df_snapshots.index) else 0
-            tan_snap = df_snapshots.loc[s, 'Tanner'] if ('Tanner' in df_snapshots.columns and s in df_snapshots.index) else 0
-            
-            dan_total, tan_total = round(dan_accum + dan_snap, 1), round(tan_accum + tan_snap, 1)
-            chart_rows.append({"Stage": s, "Daniel": dan_total, "Tanner": tan_total})
-            diff_str = f"Daniel +{round(dan_total - tan_total, 1)}" if dan_total > tan_total else (f"Tanner +{round(tan_total - dan_total, 1)}" if tan_total > dan_total else "Tie")
-            matrix_rows.append({"Stage": f"Stage {s}", "Daniel": dan_total, "Tanner": tan_total, "Difference": diff_str})
-                
-        g_col1, g_col2 = st.columns([3, 2])
-        with g_col1:
-            st.subheader("📈 Points Trajectory Progression")
-            st.line_chart(pd.DataFrame(chart_rows).set_index("Stage"), height=350)
-        with g_col2:
-            st.subheader("📊 Head-to-Head Standings")
-            st.dataframe(pd.DataFrame(reversed(matrix_rows)), use_container_width=True, hide_index=True, height=350)
-    else:
-        st.info("🕒 The race hasn't started yet! Head over to 'Team Rosters' to view active lineups. Charts and standings will unlock as soon as Stage 1 results are published.")
-
-    st.divider()
-    
-    st.subheader("🔥 Top 10 Performers per Team")
-    t_cols = st.columns(max(len(owners), 1))
-    for idx, owner in enumerate(owners):
-        with t_cols[idx]:
-            st.markdown(f"#### {owner}")
-            if not proc_data.empty and owner in proc_data['owner'].values:
-                owner_df = proc_data[proc_data['owner'] == owner]
-                team_points = owner_df.groupby('rider_name')['pts'].sum().reset_index().sort_values('pts', ascending=False).head(10)
-                for _, r in team_points.iterrows():
-                    r_sub = riders[(riders['owner'] == owner) & (riders['rider_name'] == r['rider_name'])]
-                    display_drop = pd.NA if r_sub.empty else r_sub['drop_date'].iloc[-1]
-                    st.markdown(f"**{r['pts']:.1f}** — {format_name(r['rider_name'], display_drop)}")
-            else: 
-                owner_riders = riders[riders['owner'] == owner].head(10)
-                for _, r in owner_riders.iterrows():
-                    st.markdown(f"**0.0** — {r['rider_name']}")
-
-def show_leaderboard():
-    st.title("🏆 Full Rider Leaderboard")
-    if riders.empty:
-        st.warning("Roster metrics are empty.")
-        return
-        
-    if not proc_data.empty:
-        df = proc_data.groupby(['rider_name', 'owner', 'drop_date', 'Display Category'], dropna=False)['pts'].sum().unstack(fill_value=0.0).reset_index()
-        for col in ['Stage Result', 'GC Standing', 'Jerseys']:
-            if col not in df.columns: df[col] = 0.0
-        df['Total'] = df[['Stage Result', 'GC Standing', 'Jerseys']].sum(axis=1)
-        df['Rider'] = df.apply(lambda x: format_name(x['rider_name'], x['drop_date']), axis=1)
-        df = df.sort_values('Total', ascending=False)
-    else:
-        df = riders.copy()
-        df['Stage Result'], df['GC Standing'], df['Jerseys'], df['Total'] = 0.0, 0.0, 0.0, 0.0
-        df['Rider'] = df['rider_name']
-
-    st.dataframe(
-        df[['Rider', 'owner', 'Stage Result', 'GC Standing', 'Jerseys', 'Total']], 
-        use_container_width=True, hide_index=True, height=600,
-        column_config={
-            "owner": st.column_config.TextColumn("Owner"),
-            "Stage Result": st.column_config.NumberColumn("Stage Result", format="%.1f"),
-            "GC Standing": st.column_config.NumberColumn("GC Standing", format="%.1f"),
-            "Jerseys": st.column_config.NumberColumn("Jerseys", format="%.1f"),
-            "Total": st.column_config.NumberColumn("Total", format="%.1f")
-        }
-    )
-
-def show_team_rosters():
-    st.title("👥 Team Rosters")
-    st.markdown("Current active lineups and live scoring potential.")
-    
-    if riders.empty:
-        st.warning("No roster metadata found.")
-        return
-
-    owners = sorted(riders['owner'].unique())
-    
-    if not proc_data.empty:
-        r_pts = proc_data.groupby(['match_name', 'owner', 'team_pick'])['pts'].sum().reset_index()
-    else:
-        r_pts = pd.DataFrame(columns=['match_name', 'owner', 'team_pick', 'pts'])
-        
-    cols = st.columns(max(len(owners), 1))
-    for idx, owner in enumerate(owners):
-        with cols[idx]:
-            st.markdown(f"### Team {owner}")
-            
-            owner_df = riders[riders['owner'] == owner].copy()
-            owner_df = owner_df.merge(r_pts[['match_name', 'team_pick', 'pts']], on=['match_name', 'team_pick'], how='left')
-            owner_df['pts'] = owner_df['pts'].fillna(0.0)
-            
-            owner_df['is_active'] = owner_df['drop_date'].apply(lambda d: pd.isna(d) or str(d).lower().strip() in ["", "nan", "none", "nat"])
-            active_current = owner_df[owner_df['is_active'] == True].sort_values('team_pick', ascending=True)
-            
-            if not active_current.empty:
-                st.dataframe(
-                    active_current[['team_pick', 'rider_name', 'pts', 'add_date']].rename(
-                        columns={'team_pick': 'Slot', 'rider_name': 'Rider', 'pts': 'Pts', 'add_date': 'Date Added'}
-                    ),
-                    use_container_width=True, 
-                    hide_index=True, 
-                    height=735,
-                    column_config={
-                        "Slot": st.column_config.NumberColumn("Slot", format="%d"), 
-                        "Pts": st.column_config.NumberColumn("Total Pts", format="%.1f")
-                    }
-                )
-            else:
-                st.info("No active riders on this roster.")
-
-def show_analytics():
-    st.title(" 🚀 Draft Pick Efficiency")
-    if riders.empty:
-        st.warning("Data arrays unavailable.")
-        return
-
-    owners = sorted(riders['owner'].unique())
-    cols = st.columns(max(len(owners), 1))
-    for idx, owner in enumerate(owners):
-        with cols[idx]:
-            st.subheader(f"Team {owner}")
-            r_pts = proc_data[proc_data['owner'] == owner].groupby(['match_name', 'team_pick'])['pts'].sum().reset_index() if not proc_data.empty else pd.DataFrame(columns=['match_name', 'team_pick', 'pts'])
-            df = riders[riders['owner'] == owner].merge(r_pts, on=['match_name', 'team_pick'], how='left').fillna(0)
-            
-            for pick in sorted(df['team_pick'].unique()):
-                pick_df = df[df['team_pick'] == pick].sort_values('is_replacement', ascending=True)
-                with st.expander(f"Pick {pick} — {pick_df['pts'].sum():.1f} pts"):
-                    pick_df['Rider'] = pick_df.apply(lambda r: f"↳ Sub: {r['rider_name']}" if r['is_replacement'] else r['rider_name'], axis=1)
-                    st.dataframe(pick_df[['Rider', 'pts']].rename(columns={'pts': 'Pts'}), use_container_width=True, hide_index=True)
-                                             
-    st.divider()
-    st.subheader("Free Agents")
-    if not best_unpicked.empty:
-        st.dataframe(best_unpicked[best_unpicked['pts'] > 0].head(25), use_container_width=True, hide_index=True)
-    else:
-        st.info("No unpicked alternative riders have accrued points yet.")
-
-def show_rider_breakdowns():
-    st.title("🔍 Detailed Rider Breakdowns")
-    if riders.empty:
-        st.warning("Roster metrics missing.")
-        return
-
-    owners = sorted(riders['owner'].unique())
-    owner_cols = st.columns(max(len(owners), 1))
-    for idx, owner in enumerate(owners):
-        with owner_cols[idx]:
-            st.header(f"Team {owner}")
-            r_totals = proc_data[proc_data['owner'] == owner].groupby(['match_name', 'team_pick'])['pts'].sum().reset_index() if not proc_data.empty else pd.DataFrame(columns=['match_name', 'team_pick', 'pts'])
-            team_riders = riders[riders['owner'] == owner].merge(r_totals, on=['match_name', 'team_pick'], how='left').fillna(0).sort_values('pts', ascending=False)
-            
-            for _, r in team_riders.iterrows():
-                display = f"{r['rider_name']} (Sub)" if r['is_replacement'] else r['rider_name']
-                with st.expander(f"Pick {r['team_pick']} | {format_name(display, r['drop_date'])} — {r['pts']:.1f} pts"):
-                    if r['pts'] > 0 and not proc_data.empty:
-                        st.dataframe(proc_data[(proc_data['match_name'] == r['match_name']) & (proc_data['team_pick'] == r['team_pick'])][['Stage', 'Category', 'rank', 'pts']], use_container_width=True, hide_index=True)
-                    else: 
-                        st.write("No points scored yet.")
-
-# --- 4. NAVIGATION ---
-pg = st.navigation([
-    st.Page(show_dashboard, title="Home", icon="🏠"), 
-    st.Page(show_leaderboard, title="Leaderboard", icon="🏆"), 
-    st.Page(show_team_rosters, title="Team Rosters", icon="👥"), 
-    st.Page(show_analytics, title="Draft Analytics", icon="📈"), 
-    st.Page(show_rider_breakdowns, title="Rider Breakdowns", icon="🔍")
-])
-pg.run()
+                df_hist_
