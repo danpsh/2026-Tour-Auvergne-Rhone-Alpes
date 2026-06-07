@@ -1,8 +1,3 @@
-Here is the clean, complete code for your `app.py` file, fully updated to read directly from your **`results.xlsx`** Excel file using the `openpyxl` engine.
-
-You can safely copy and paste this entire block directly into your file:
-
-```python
 import streamlit as st
 import pandas as pd
 import unicodedata
