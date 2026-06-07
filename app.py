@@ -1,8 +1,3 @@
-Here is your fully corrected, ready-to-run code.
-
-I went through your script and fixed the loop structure so it matches the exact column naming convention shown in **image_3b9be5.png** (e.g., matching `Points #1` without the extra spaces your old code was trying to look for). I also streamlined the date handling logic so that today's Stage 1 results (`2026-06-07`) pass through the date filter smoothly without being accidentally dropped by pandas.
-
-```python
 import streamlit as st
 import pandas as pd
 import unicodedata
@@ -144,7 +139,6 @@ def load_data():
                 if col in stage_data.columns and not pd.isna(stage_data[col].iloc[0]):
                     raw_results_list.append({'Stage': s, 'res_rider': stage_data[col].iloc[0], 'rank': i, 'Category': 'GC Standing'})
             
-            # FIX: Cleaned string formatting tuple headers to match image_3b9be5.png exactly (removed spaces)
             for prefix, cat_name in [('Points #', 'Points Jersey'), ('Mountain #', 'Mountain Jersey'), ('Youth #', 'Youth Jersey')]:
                 for i in range(1, 4):
                     col = f'{prefix}{i}'
@@ -157,7 +151,6 @@ def load_data():
         df_all_raw['match_name'] = df_all_raw['res_rider'].apply(normalize_name)
         proc = df_all_raw.merge(r_df[['match_name', 'owner', 'rider_name', 'team_pick', 'is_replacement', 'add_date', 'drop_date', 'replaces_rider']], on='match_name', how='inner')
 
-        # FIX: Complete timeline evaluation overhaul to prevent dropped records on text strings
         proc['stage_date'] = pd.to_datetime(proc['Stage'].map(STAGE_DATES))
         proc['add_dt'] = pd.to_datetime(proc['add_date'])
         
@@ -170,7 +163,7 @@ def load_data():
         def calc_pts(row):
             cat, rank = row['Category'], row['rank']
             base = SCORING.get(cat, SCORING.get("Jersey", {}).get(rank, 0))
-            if isinstance(base, dict):  # Fallback logic safety
+            if isinstance(base, dict):
                 base = base.get(rank, 0)
             add_date = pd.to_datetime(row['add_date'])
             if row.get('is_replacement', False) and add_date >= pd.Timestamp('2026-06-10'):
@@ -217,7 +210,7 @@ def show_dashboard():
     owners = sorted(riders['owner'].unique())
     m_cols = st.columns(max(len(owners), 1))
     for idx, owner in enumerate(owners):
-        if not proc_data.empty and 'owner' in proc_data.columns:
+        if not proc_data.empty && 'owner' in proc_data.columns:
             owner_pts = proc_data[proc_data['owner'] == owner]['pts'].sum()
         else:
             owner_pts = 0.0
@@ -239,7 +232,6 @@ def show_dashboard():
                     if col in stage_data.columns and not pd.isna(stage_data[col].iloc[0]):
                         raw_list.append({'Stage': s, 'res_rider': stage_data[col].iloc[0], 'rank': i, 'Category': 'GC Standing'})
                 
-                # FIX: Synced column names here as well to find correct headers without spaces
                 for prefix, cat_name in [('Points #', 'Points Jersey'), ('Mountain #', 'Mountain Jersey'), ('Youth #', 'Youth Jersey')]:
                     for i in range(1, 4):
                         col = f'{prefix}{i}'
@@ -250,7 +242,6 @@ def show_dashboard():
                 df_hist_snaps['match_name'] = df_hist_snaps['res_rider'].apply(normalize_name)
                 df_hist_snaps = df_hist_snaps.merge(riders[['match_name', 'owner', 'add_date', 'drop_date', 'is_replacement', 'team_pick']], on='match_name', how='inner')
                 
-                # FIX: Realigned date parameters to map precisely with datetime timestamps
                 df_hist_snaps['stage_date'] = pd.to_datetime(df_hist_snaps['Stage'].map(STAGE_DATES))
                 df_hist_snaps['add_dt'] = pd.to_datetime(df_hist_snaps['add_date'])
                 
@@ -452,5 +443,3 @@ pg = st.navigation([
     st.Page(show_rider_breakdowns, title="Rider Breakdowns", icon="🔍")
 ])
 pg.run()
-
-```
