@@ -3,6 +3,7 @@ import pandas as pd
 import unicodedata
 
 # --- 1. SETTINGS & SCORING ---
+# CRITICAL: set_page_config MUST be the very first Streamlit command invoked.
 st.set_page_config(
     page_title="2026 Tour Auvergne - Rhône-Alpes Fantasy", 
     layout="wide", 
@@ -23,14 +24,8 @@ REPLACEMENT_MAP = {
 
 # June 2026 Schedule
 STAGE_DATES = {
-    1: '2026-06-07',
-    2: '2026-06-08',
-    3: '2026-06-09',
-    4: '2026-06-10',
-    5: '2026-06-11',
-    6: '2026-06-12',
-    7: '2026-06-13',
-    8: '2026-06-14'
+    1: '2026-06-07', 2: '2026-06-08', 3: '2026-06-09', 4: '2026-06-10',
+    5: '2026-06-11', 6: '2026-06-12', 7: '2026-06-13', 8: '2026-06-14'
 }
 
 # --- 2. HELPERS ---
@@ -194,10 +189,9 @@ def load_data():
         st.error(f"⚠️ App Data Processing Error: {e}")
         return empty_proc, empty_riders, 0, empty_fa
 
-proc_data, riders, current_stage, best_unpicked = load_data()
-
 # --- 3. VIEWS ---
 def show_dashboard():
+    proc_data, riders, current_stage, _ = load_data()
     st.title("🏆 Tour Auvergne - Rhône-Alpes Fantasy")
     
     if riders.empty:
@@ -310,6 +304,7 @@ def show_dashboard():
                     st.markdown(f"**0.0** — {r['rider_name']}")
 
 def show_leaderboard():
+    proc_data, riders, _, _ = load_data()
     st.title("🏆 Full Rider Leaderboard")
     if riders.empty:
         st.warning("Roster metrics are empty.")
@@ -340,6 +335,7 @@ def show_leaderboard():
     )
 
 def show_team_rosters():
+    proc_data, riders, _, _ = load_data()
     st.title("👥 Team Rosters")
     st.markdown("Current active lineups and live scoring potential.")
     
@@ -383,6 +379,7 @@ def show_team_rosters():
                 st.info("No active riders on this roster.")
 
 def show_analytics():
+    proc_data, riders, _, best_unpicked = load_data()
     st.title(" 🚀 Draft Pick Efficiency")
     if riders.empty:
         st.warning("Data arrays unavailable.")
@@ -410,6 +407,7 @@ def show_analytics():
         st.info("No unpicked alternative riders have accrued points yet.")
 
 def show_rider_breakdowns():
+    proc_data, riders, _, _ = load_data()
     st.title("🔍 Detailed Rider Breakdowns")
     if riders.empty:
         st.warning("Roster metrics missing.")
@@ -431,7 +429,8 @@ def show_rider_breakdowns():
                     else: 
                         st.write("No points scored yet.")
 
-# --- 4. NAVIGATION ---
+# --- 4. NAVIGATION MAP ---
+# FIXED: We map Python callable functions inside st.Page framework correctly.
 pg = st.navigation([
     st.Page(show_dashboard, title="Home", icon="🏠"), 
     st.Page(show_leaderboard, title="Leaderboard", icon="🏆"), 
@@ -440,5 +439,3 @@ pg = st.navigation([
     st.Page(show_rider_breakdowns, title="Rider Breakdowns", icon="🔍")
 ])
 pg.run()
-
-```
