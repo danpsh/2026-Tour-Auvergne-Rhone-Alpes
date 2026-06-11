@@ -3,7 +3,6 @@ import pandas as pd
 import unicodedata
 
 # --- 1. SETTINGS & SCORING ---
-# CRITICAL: set_page_config MUST be the very first Streamlit command invoked.
 st.set_page_config(
     page_title="2026 Tour Auvergne - Rhône-Alpes Fantasy", 
     layout="wide", 
@@ -22,7 +21,6 @@ REPLACEMENT_MAP = {
     13: 0.5, 14: 0.5, 15: 0.5, 16: 0.5, 17: 0.5, 18: 0.5, 19: 0.5, 20: 0.5 
 }
 
-# June 2026 Schedule
 STAGE_DATES = {
     1: '2026-06-07', 2: '2026-06-08', 3: '2026-06-09', 4: '2026-06-10',
     5: '2026-06-11', 6: '2026-06-12', 7: '2026-06-13', 8: '2026-06-14'
@@ -53,14 +51,13 @@ def load_data():
     empty_fa = pd.DataFrame(columns=['res_rider', 'pts'])
 
     try:
-        # Load local rosters file dynamically
         try:
             r_df = pd.read_csv('riders.csv', encoding='utf-8', engine='python', on_bad_lines='skip')
         except (UnicodeDecodeError, FileNotFoundError):
             try:
                 r_df = pd.read_csv('riders.csv', encoding='cp1252', engine='python', on_bad_lines='skip')
             except:
-                return empty_proc, empty_riders, 0, empty_fa
+                return empty_proc, empty_riders, 0, empty_fa, empty_proc
 
         r_df['match_name'] = r_df['rider_name'].apply(normalize_name)
         
@@ -98,14 +95,13 @@ def load_data():
                 team_picks.append(p_num)
         r_df['team_pick'] = team_picks
 
-        # Target results.xlsx instead of a CSV
         try:
             res = pd.read_excel('results.xlsx', engine='openpyxl')
         except Exception:
             res = pd.DataFrame()
 
         if res.empty or 'Stage' not in res.columns:
-            return empty_proc, r_df, 0, empty_fa
+            return empty_proc, r_df, 0, empty_fa, empty_proc
         
         has_data = res.copy()
         if '1st' in has_data.columns:
@@ -117,7 +113,7 @@ def load_data():
         latest_stage = max(all_stages) if len(all_stages) > 0 else 0
         
         if latest_stage == 0:
-            return empty_proc, r_df, 0, empty_fa
+            return empty_proc, r_df, 0, empty_fa, empty_proc
 
         raw_results_list = []
         for s in all_stages:
@@ -138,7 +134,7 @@ def load_data():
                         raw_results_list.append({'Stage': s, 'res_rider': stage_data[col].iloc[0], 'rank': i, 'Category': cat_name})
 
         df_all_raw = pd.DataFrame(raw_results_list)
-        if df_all_raw.empty: return empty_proc, r_df, latest_stage, empty_fa
+        if df_all_raw.empty: return empty_proc, r_df, latest_stage, empty_fa, empty_proc
 
         df_all_raw['match_name'] = df_all_raw['res_rider'].apply(normalize_name)
         proc = df_all_raw.merge(r_df[['match_name', 'owner', 'rider_name', 'team_pick', 'is_replacement', 'add_date', 'drop_date', 'replaces_rider']], on='match_name', how='inner')
@@ -150,7 +146,7 @@ def load_data():
         proc['drop_dt'] = pd.to_datetime(proc['drop_date'], errors='coerce')
         
         valid_mask = (proc['stage_date'] >= proc['add_dt']) & (is_dropped_null | (proc['stage_date'] <= proc['drop_dt']))
-        proc = proc[valid_mask].copy()
+        proc = valid_mask_df = proc[valid_mask].copy()
 
         def calc_pts(row):
             cat, rank = row['Category'], row['rank']
@@ -167,7 +163,6 @@ def load_data():
         proc['pts'] = proc.apply(calc_pts, axis=1)
         proc['Display Category'] = proc['Category'].apply(group_cat)
         
-        # Keep a full un-filtered copy for historical tables before snapshot slicing
         proc_raw_full = proc.copy()
 
         is_stage_result = proc['Category'] == 'Stage Result'
@@ -306,28 +301,67 @@ def show_dashboard():
                 for _, r in owner_riders.iterrows():
                     st.markdown(f"**0.0** — {r['rider_name']}")
 
-    # --- NEW: STAGE BY STAGE POINTS HISTORY TABLE ---
+    # --- HOME VIEW: RECENT 2 STAGES PLACEMENT LOG ONLY ---
     st.divider()
-    st.subheader("📆 Stage-by-Stage Rider Points Log")
+    st.subheader("⏱️ Recent Stage Placements Log (Last 2 Stages)")
     if not proc_raw_full.empty:
-        # Group points by stage, owner, and rider name to create a clean matrix
-        hist_table = proc_raw_full.groupby(['Stage', 'owner', 'rider_name'])['pts'].sum().reset_index()
-        hist_table = hist_table.sort_values(by=['Stage', 'owner', 'pts'], ascending=[False, True, False])
+        # Filter for STAGE PLACEMENTS ONLY
+        stage_only_df = proc_raw_full[proc_raw_full['Category'] == 'Stage Result'].copy()
         
-        st.dataframe(
-            hist_table,
-            use_container_width=True,
-            hide_index=True,
-            height=400,
-            column_config={
-                "Stage": st.column_config.NumberColumn("Stage", format="Stage %d"),
-                "owner": st.column_config.TextColumn("Owner"),
-                "rider_name": st.column_config.TextColumn("Rider Name"),
-                "pts": st.column_config.NumberColumn("Points Earned", format="%.1f")
-            }
-        )
+        if not stage_only_df.empty:
+            # Determine target bounds for the last 2 recorded race days
+            max_stage = stage_only_df['Stage'].max()
+            recent_stages = [max_stage, max_stage - 1] if max_stage > 1 else [max_stage]
+            
+            home_filtered = stage_only_df[stage_only_df['Stage'].isin(recent_stages)]
+            home_log = home_filtered.groupby(['Stage', 'owner', 'rider_name', 'rank'])['pts'].sum().reset_index()
+            home_log = home_log.sort_values(by=['Stage', 'rank'], ascending=[False, True])
+            
+            st.dataframe(
+                home_log.rename(columns={'rank': 'Finish Pos'}),
+                use_container_width=True, hide_index=True, height=250,
+                column_config={
+                    "Stage": st.column_config.NumberColumn("Stage", format="Stage %d"),
+                    "owner": st.column_config.TextColumn("Owner"),
+                    "rider_name": st.column_config.TextColumn("Rider Name"),
+                    "Finish Pos": st.column_config.NumberColumn("Placement", format="Pos %d"),
+                    "pts": st.column_config.NumberColumn("Points", format="%.1f")
+                }
+            )
+        else:
+            st.info("No explicit stage completion placement matches processed yet.")
     else:
-        st.info("No historical stage-by-stage points records have been processed yet.")
+        st.info("No points records found.")
+
+# --- NEW VIEW TAB: COMPREHENSIVE HISTORICAL STAGE LOG ---
+def show_full_stage_placements():
+    _, _, _, _, proc_raw_full = load_data()
+    st.title("⏱️ Complete Historical Stage Placements Log")
+    st.markdown("Full list of all points accrued strictly from top-10 stage finish line placements across the entire race.")
+    
+    if not proc_raw_full.empty:
+        # Filter strictly out everything that isn't a direct finishing stage placement
+        full_stage_only = proc_raw_full[proc_raw_full['Category'] == 'Stage Result'].copy()
+        
+        if not full_stage_only.empty:
+            full_log = full_stage_only.groupby(['Stage', 'owner', 'rider_name', 'rank'])['pts'].sum().reset_index()
+            full_log = full_log.sort_values(by=['Stage', 'rank'], ascending=[False, True])
+            
+            st.dataframe(
+                full_log.rename(columns={'rank': 'Finish Pos'}),
+                use_container_width=True, hide_index=True, height=600,
+                column_config={
+                    "Stage": st.column_config.NumberColumn("Stage", format="Stage %d"),
+                    "owner": st.column_config.TextColumn("Owner"),
+                    "rider_name": st.column_config.TextColumn("Rider Name"),
+                    "Finish Pos": st.column_config.NumberColumn("Placement", format="Pos %d"),
+                    "pts": st.column_config.NumberColumn("Points Earned", format="%.1f")
+                }
+            )
+        else:
+            st.info("No stage completion finishing records have registered points entries yet.")
+    else:
+        st.info("Historical data log is currently unpopulated.")
 
 def show_leaderboard():
     proc_data, riders, _, _, _ = load_data()
@@ -456,10 +490,10 @@ def show_rider_breakdowns():
                         st.write("No points scored yet.")
 
 # --- 4. NAVIGATION MAP ---
-# FIXED: We map Python callable functions inside st.Page framework correctly.
 pg = st.navigation([
     st.Page(show_dashboard, title="Home", icon="🏠"), 
     st.Page(show_leaderboard, title="Leaderboard", icon="🏆"), 
+    st.Page(show_full_stage_placements, title="Stage Placements Log", icon="⏱️"),
     st.Page(show_team_rosters, title="Team Rosters", icon="👥"), 
     st.Page(show_analytics, title="Draft Analytics", icon="📈"), 
     st.Page(show_rider_breakdowns, title="Rider Breakdowns", icon="🔍")
