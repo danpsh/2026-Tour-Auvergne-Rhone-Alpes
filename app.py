@@ -167,6 +167,9 @@ def load_data():
         proc['pts'] = proc.apply(calc_pts, axis=1)
         proc['Display Category'] = proc['Category'].apply(group_cat)
         
+        # Keep a full un-filtered copy for historical tables before snapshot slicing
+        proc_raw_full = proc.copy()
+
         is_stage_result = proc['Category'] == 'Stage Result'
         is_latest_snapshot = proc['Stage'] == latest_stage
         proc = proc[is_stage_result | is_latest_snapshot].copy()
@@ -183,15 +186,15 @@ def load_data():
         unpicked = unpicked[(unpicked['Category'] == 'Stage Result') | (unpicked['Stage'] == latest_stage)]
         best_unpicked = unpicked.groupby('res_rider')['pts'].sum().reset_index().sort_values('pts', ascending=False)
         
-        return proc, r_df, latest_stage, best_unpicked
+        return proc, r_df, latest_stage, best_unpicked, proc_raw_full
 
     except Exception as e:
         st.error(f"⚠️ App Data Processing Error: {e}")
-        return empty_proc, empty_riders, 0, empty_fa
+        return empty_proc, empty_riders, 0, empty_fa, empty_proc
 
 # --- 3. VIEWS ---
 def show_dashboard():
-    proc_data, riders, current_stage, _ = load_data()
+    proc_data, riders, current_stage, _, proc_raw_full = load_data()
     st.title("🏆 Tour Auvergne - Rhône-Alpes Fantasy")
     
     if riders.empty:
@@ -303,8 +306,31 @@ def show_dashboard():
                 for _, r in owner_riders.iterrows():
                     st.markdown(f"**0.0** — {r['rider_name']}")
 
+    # --- NEW: STAGE BY STAGE POINTS HISTORY TABLE ---
+    st.divider()
+    st.subheader("📆 Stage-by-Stage Rider Points Log")
+    if not proc_raw_full.empty:
+        # Group points by stage, owner, and rider name to create a clean matrix
+        hist_table = proc_raw_full.groupby(['Stage', 'owner', 'rider_name'])['pts'].sum().reset_index()
+        hist_table = hist_table.sort_values(by=['Stage', 'owner', 'pts'], ascending=[False, True, False])
+        
+        st.dataframe(
+            hist_table,
+            use_container_width=True,
+            hide_index=True,
+            height=400,
+            column_config={
+                "Stage": st.column_config.NumberColumn("Stage", format="Stage %d"),
+                "owner": st.column_config.TextColumn("Owner"),
+                "rider_name": st.column_config.TextColumn("Rider Name"),
+                "pts": st.column_config.NumberColumn("Points Earned", format="%.1f")
+            }
+        )
+    else:
+        st.info("No historical stage-by-stage points records have been processed yet.")
+
 def show_leaderboard():
-    proc_data, riders, _, _ = load_data()
+    proc_data, riders, _, _, _ = load_data()
     st.title("🏆 Full Rider Leaderboard")
     if riders.empty:
         st.warning("Roster metrics are empty.")
@@ -335,7 +361,7 @@ def show_leaderboard():
     )
 
 def show_team_rosters():
-    proc_data, riders, _, _ = load_data()
+    proc_data, riders, _, _, _ = load_data()
     st.title("👥 Team Rosters")
     st.markdown("Current active lineups and live scoring potential.")
     
@@ -379,7 +405,7 @@ def show_team_rosters():
                 st.info("No active riders on this roster.")
 
 def show_analytics():
-    proc_data, riders, _, best_unpicked = load_data()
+    proc_data, riders, _, best_unpicked, _ = load_data()
     st.title(" 🚀 Draft Pick Efficiency")
     if riders.empty:
         st.warning("Data arrays unavailable.")
@@ -407,7 +433,7 @@ def show_analytics():
         st.info("No unpicked alternative riders have accrued points yet.")
 
 def show_rider_breakdowns():
-    proc_data, riders, _, _ = load_data()
+    proc_data, riders, _, _, _ = load_data()
     st.title("🔍 Detailed Rider Breakdowns")
     if riders.empty:
         st.warning("Roster metrics missing.")
