@@ -146,7 +146,7 @@ def load_data():
         proc['drop_dt'] = pd.to_datetime(proc['drop_date'], errors='coerce')
         
         valid_mask = (proc['stage_date'] >= proc['add_dt']) & (is_dropped_null | (proc['stage_date'] <= proc['drop_dt']))
-        proc = valid_mask_df = proc[valid_mask].copy()
+        proc = proc[valid_mask].copy()
 
         def calc_pts(row):
             cat, rank = row['Category'], row['rank']
@@ -301,15 +301,12 @@ def show_dashboard():
                 for _, r in owner_riders.iterrows():
                     st.markdown(f"**0.0** — {r['rider_name']}")
 
-    # --- HOME VIEW: RECENT 2 STAGES PLACEMENT LOG ONLY ---
     st.divider()
     st.subheader("⏱️ Recent Stage Placements Log (Last 2 Stages)")
     if not proc_raw_full.empty:
-        # Filter for STAGE PLACEMENTS ONLY
         stage_only_df = proc_raw_full[proc_raw_full['Category'] == 'Stage Result'].copy()
         
         if not stage_only_df.empty:
-            # Determine target bounds for the last 2 recorded race days
             max_stage = stage_only_df['Stage'].max()
             recent_stages = [max_stage, max_stage - 1] if max_stage > 1 else [max_stage]
             
@@ -333,14 +330,12 @@ def show_dashboard():
     else:
         st.info("No points records found.")
 
-# --- NEW VIEW TAB: COMPREHENSIVE HISTORICAL STAGE LOG ---
 def show_full_stage_placements():
     _, _, _, _, proc_raw_full = load_data()
     st.title("⏱️ Complete Historical Stage Placements Log")
     st.markdown("Full list of all points accrued strictly from top-10 stage finish line placements across the entire race.")
     
     if not proc_raw_full.empty:
-        # Filter strictly out everything that isn't a direct finishing stage placement
         full_stage_only = proc_raw_full[proc_raw_full['Category'] == 'Stage Result'].copy()
         
         if not full_stage_only.empty:
@@ -397,7 +392,7 @@ def show_leaderboard():
 def show_team_rosters():
     proc_data, riders, _, _, _ = load_data()
     st.title("👥 Team Rosters")
-    st.markdown("Current active lineups and live scoring potential.")
+    st.markdown("Current active lineups, historical drops, and live scoring potential.")
     
     if riders.empty:
         st.warning("No roster metadata found.")
@@ -416,27 +411,48 @@ def show_team_rosters():
             st.markdown(f"### Team {owner}")
             
             owner_df = riders[riders['owner'] == owner].copy()
-            owner_df = owner_df.merge(r_pts[['match_name', 'team_pick', 'pts']], on=['match_name', 'team_pick'], how='left')
+            owner_df = owner_df.merge(
+                r_pts[['match_name', 'owner', 'team_pick', 'pts']], 
+                on=['match_name', 'owner', 'team_pick'], 
+                how='left'
+            )
             owner_df['pts'] = owner_df['pts'].fillna(0.0)
             
-            owner_df['is_active'] = owner_df['drop_date'].apply(lambda d: pd.isna(d) or str(d).lower().strip() in ["", "nan", "none", "nat"])
-            active_current = owner_df[owner_df['is_active'] == True].sort_values('team_pick', ascending=True)
+            owner_df['is_active'] = owner_df['drop_date'].apply(
+                lambda d: pd.isna(d) or str(d).lower().strip() in ["", "nan", "none", "nat", "0", "false"]
+            )
             
-            if not active_current.empty:
+            owner_df['Display Name'] = owner_df.apply(
+                lambda row: format_name(row['rider_name'], row['drop_date']) if not row['is_active'] else row['rider_name'], 
+                axis=1
+            )
+            
+            owner_df['Rider'] = owner_df.apply(
+                lambda row: f"↳ Sub: {row['Display Name']}" if row['is_replacement'] else row['Display Name'], 
+                axis=1
+            )
+            
+            roster_display = owner_df.sort_values(
+                by=['team_pick', 'is_replacement'], 
+                ascending=[True, True]
+            )
+            
+            if not roster_display.empty:
                 st.dataframe(
-                    active_current[['team_pick', 'rider_name', 'pts', 'add_date']].rename(
-                        columns={'team_pick': 'Slot', 'rider_name': 'Rider', 'pts': 'Pts', 'add_date': 'Date Added'}
+                    roster_display[['team_pick', 'Rider', 'pts', 'add_date']].rename(
+                        columns={'team_pick': 'Slot', 'pts': 'Pts', 'add_date': 'Date Added'}
                     ),
                     use_container_width=True, 
                     hide_index=True, 
                     height=735,
                     column_config={
                         "Slot": st.column_config.NumberColumn("Slot", format="%d"), 
-                        "Pts": st.column_config.NumberColumn("Total Pts", format="%.1f")
+                        "Pts": st.column_config.NumberColumn("Total Pts", format="%.1f"),
+                        "Rider": st.column_config.TextColumn("Rider Lineup Structure")
                     }
                 )
             else:
-                st.info("No active riders on this roster.")
+                st.info("No riders on this roster.")
 
 def show_analytics():
     proc_data, riders, _, best_unpicked, _ = load_data()
