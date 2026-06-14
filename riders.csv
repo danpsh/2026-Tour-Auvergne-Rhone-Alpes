@@ -1,7 +1,7 @@
 rider_name,owner,add_date,drop_date,is_replacement,replaces_rider
 Paul Seixas,Daniel,2026-06-05,,False,
 Matteo Jorgenson,Daniel,2026-06-05,,False,
-Oscar Onley,Daniel,2026-06-05,,False,
+Oscar Onley,Daniel,2026-06-05,2026-06-12,False,
 Kévin Vauquelin,Daniel,2026-06-05,,False,
 Wout van Aert,Daniel,2026-06-05,,False,
 Mattias Skjelmose,Daniel,2026-06-05,,False,
@@ -22,6 +22,7 @@ Brady Gilmore,Daniel,2026-06-05,2026-06-08,False,
 Ben Tulett,Daniel,2026-06-08,,True,Brady Gilmore
 Harold Tejada,Daniel,2026-06-11,,True,Jefferson Cepeda
 Maxim Van Gils,Daniel,2026-06-11,,True,Iván Romeo
+Cristián Rodríguez,Daniel,2026-06-12,,True,Oscar Onley
 Isaac del Toro,Tanner,2026-06-05,,False,
 Juan Ayuso,Tanner,2026-06-05,,False,
 Tobias Halland Johannessen,Tanner,2026-06-05,,False,
